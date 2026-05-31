@@ -1,6 +1,7 @@
 # CC Touch Fish
 
 A desktop pet application with Claude Code integration, built with Tauri + React.
+![ScreenShot_2026-05-31_235559_516.png](public/screenshots/ScreenShot_2026-05-31_235559_516.png)
 
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -8,7 +9,6 @@ A desktop pet application with Claude Code integration, built with Tauri + React
 ## Overview
 
 CC Touch Fish is a lightweight desktop companion that lives in your system tray. It integrates with Claude Code's PreToolUse hook system to display approval dialogs when Claude Code attempts to execute potentially impactful commands, giving you full control over tool execution.
-
 ## Features
 
 - **Desktop Pet Companion** - Animated sprite-based pets (Alice and Sally) with idle, hover, and click animations
