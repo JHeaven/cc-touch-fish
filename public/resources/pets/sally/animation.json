@@ -1,0 +1,26 @@
+{
+  "name": "萨利",
+  "frameWidth": 190,
+  "frameHeight": 250,
+  "framesPerRow": 53,
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 20,
+      "speed": 0.05,
+      "loop": true
+    },
+    "hover": {
+      "row": 1,
+      "frames": 53,
+      "speed": 0.05,
+      "loop": true
+    },
+    "click": {
+      "row": 2,
+      "frames": 11,
+      "speed": 0.05,
+      "loop": false
+    }
+  }
+}

@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Frontend build
+dist/
+dist-sourcemap/
+
+# Tauri/Rust build
+src-tauri/target/
+src-tauri/Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Editor directories
+*.o
+*.obj
+*.pdb
+*.dll
+*.exe
+
+# Debug
+*.map
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

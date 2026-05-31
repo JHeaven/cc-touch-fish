@@ -1,0 +1,28 @@
+{
+  "pets": [
+    {
+      "id": "alice",
+      "name": "爱丽丝",
+      "spritePath": "alice/sprite.png",
+      "frameWidth": 190,
+      "frameHeight": 250,
+      "animations": {
+        "idle": { "row": 0, "frames": 27 },
+        "hover": { "row": 1, "frames": 14 },
+        "click": { "row": 2, "frames": 27 }
+      }
+    },
+    {
+      "id": "sally",
+      "name": "萨利",
+      "spritePath": "sally/sprite.png",
+      "frameWidth": 190,
+      "frameHeight": 250,
+      "animations": {
+        "idle": { "row": 0, "frames": 20 },
+        "hover": { "row": 1, "frames": 53 },
+        "click": { "row": 2, "frames": 11 }
+      }
+    }
+  ]
+}
