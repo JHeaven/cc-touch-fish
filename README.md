@@ -130,7 +130,7 @@ cc-touch-fish/
 - [ ] **Multi-language Support** - i18n for settings and UI
 - [ ] **Statistics Dashboard** - Track Claude Code usage patterns
 - [ ] **Plugin System** - Extensible pet behaviors and integrations
-
+- 【PS : 很多功能还未实现，静候佳音】
 ## License
 
 MIT
