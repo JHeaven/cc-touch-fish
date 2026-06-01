@@ -1,3 +1,6 @@
+import { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+
 interface ApprovalModalProps {
   pendingApproval: {
     tool: string;
@@ -9,6 +12,16 @@ interface ApprovalModalProps {
   onDeny: () => void;
 }
 
+interface HookSettings {
+  auto_approve_countdown: number;
+  deny_countdown: number;
+}
+
+interface AutoApproveCheckResult {
+  should_auto_approve: boolean;
+  matched: boolean;
+}
+
 // 气泡图片尺寸: 2448 x 2122, 比例约 1.1536
 const BUBBLE_ASPECT = 2448 / 2122; // ~1.1536
 const BUBBLE_WIDTH = 380;
@@ -16,6 +29,100 @@ const BUBBLE_HEIGHT = BUBBLE_WIDTH / BUBBLE_ASPECT; // ~329
 
 function ApprovalModal({ pendingApproval, onApprove, onDeny }: ApprovalModalProps) {
   console.log('ApprovalModal showing bubble for:', pendingApproval.tool);
+
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isAutoApprove, setIsAutoApprove] = useState(false);
+  const requestIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    // Reset state when pendingApproval changes
+    setCountdown(null);
+    setIsAutoApprove(false);
+
+    // Increment request ID to invalidate any pending countdown callbacks
+    const currentRequestId = ++requestIdRef.current;
+
+    const checkAndStartCountdown = async () => {
+      // Check if this is still the current request
+      if (requestIdRef.current !== currentRequestId) return;
+
+      try {
+        const [settingsResult, checkResult] = await Promise.all([
+          invoke<HookSettings>('get_hook_settings'),
+          invoke<AutoApproveCheckResult>('check_auto_approve', {
+            toolName: pendingApproval.tool,
+            command: pendingApproval.command,
+          }),
+        ]);
+
+        // Check again after async call
+        if (requestIdRef.current !== currentRequestId) return;
+
+        const shouldAutoApprove = checkResult.should_auto_approve;
+        setIsAutoApprove(shouldAutoApprove);
+
+        const countdownSeconds = shouldAutoApprove
+          ? settingsResult.auto_approve_countdown
+          : settingsResult.deny_countdown;
+
+        setCountdown(countdownSeconds);
+      } catch (e) {
+        console.error('Failed to check auto approve:', e);
+        setCountdown(null);
+      }
+    };
+
+    checkAndStartCountdown();
+  }, [pendingApproval.tool, pendingApproval.command]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return;
+
+    const currentRequestId = requestIdRef.current;
+    const intervalId = setInterval(() => {
+      // Only update if this is still the current request
+      if (requestIdRef.current !== currentRequestId) return;
+
+      setCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [countdown]);
+
+  // Handle countdown reaching 0
+  useEffect(() => {
+    if (countdown !== 0) return;
+
+    if (isAutoApprove) {
+      onApprove();
+    } else {
+      // Deny: submit approval then hide window
+      invoke('submit_approval', { approved: false }).then(() => {
+        invoke('hide_bubble_window');
+      });
+    }
+  }, [countdown, isAutoApprove, onApprove]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Clear any pending interval when component unmounts
+    };
+  }, []);
+
+  const handleApprove = () => {
+    onApprove();
+  };
+
+  const handleDeny = () => {
+    onDeny();
+  };
 
   return (
     <div
@@ -144,7 +251,7 @@ function ApprovalModal({ pendingApproval, onApprove, onDeny }: ApprovalModalProp
         }}>
           <button
             className="approval-btn approval-btn-deny"
-            onClick={onDeny}
+            onClick={handleDeny}
             style={{
               background: '#ff6b6b',
               color: 'white',
@@ -161,10 +268,13 @@ function ApprovalModal({ pendingApproval, onApprove, onDeny }: ApprovalModalProp
           >
             <span>✖</span>
             <span>拒绝</span>
+            {countdown !== null && !isAutoApprove && (
+              <span style={{ marginLeft: 4, fontSize: 12 }}>({countdown}s)</span>
+            )}
           </button>
           <button
             className="approval-btn approval-btn-allow"
-            onClick={onApprove}
+            onClick={handleApprove}
             style={{
               background: '#51cf66',
               color: 'white',
@@ -181,6 +291,9 @@ function ApprovalModal({ pendingApproval, onApprove, onDeny }: ApprovalModalProp
           >
             <span>✔</span>
             <span>允许</span>
+            {countdown !== null && isAutoApprove && (
+              <span style={{ marginLeft: 4, fontSize: 12 }}>({countdown}s)</span>
+            )}
           </button>
         </div>
       </div>

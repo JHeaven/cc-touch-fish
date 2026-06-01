@@ -106,6 +106,7 @@ function App() {
 
   // Bubble window: poll for pending approval to display
   const [bubblePending, setBubblePending] = useState<PendingData | null>(null);
+  const [bubbleRenderKey, setBubbleRenderKey] = useState<number>(0);
 
   useEffect(() => {
     if (!windowLabel.startsWith('bubble')) return;
@@ -119,6 +120,8 @@ function App() {
         cwd: event.payload.cwd || '',
         sessionId: event.payload.session_id || '',
       });
+      // Increment key to force remount of ApprovalModal
+      setBubbleRenderKey(prev => prev + 1);
     });
 
     // Also poll as fallback
@@ -143,6 +146,7 @@ function App() {
               cwd: data.cwd || '',
               sessionId: data.session_id || '',
             });
+            setBubbleRenderKey(prev => prev + 1);
           }
         }
       } catch (e) {
@@ -160,12 +164,11 @@ function App() {
     try {
       await invoke('submit_approval', { approved });
     } catch (e) {
-      console.error('Failed to submit approval:', e);
+      // Ignore errors - might be from countdown handler already submitting
     }
     lastPendingRef.current = null;
     clearApproval();
-    setBubblePending(null);
-    // Close bubble window
+    // Don't clear bubblePending here - let it be set by the next request
     await invoke('hide_bubble_window');
   };
 
@@ -192,6 +195,7 @@ function App() {
     }
     return (
       <ApprovalModal
+        key={`approval-${bubbleRenderKey}`}
         pendingApproval={bubblePending}
         onApprove={() => handleApproval(true)}
         onDeny={() => handleApproval(false)}

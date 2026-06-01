@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { notification } from 'antd';
 import { usePetStore } from '../stores/petStore';
 import petsData from '../data/pets.json';
 
@@ -123,7 +124,10 @@ function HomePage() {
       await invoke('update_pet_stats', { ownerTitle });
       setPetStats({ ...petStats, owner_title: ownerTitle });
       setIsEditingTitle(false);
-    } catch (e) { console.error(e); }
+      notification.success({ message: '保存成功', description: `称谓已更新为 "${ownerTitle}"` });
+    } catch (e) {
+      notification.error({ message: '保存失败', description: String(e) });
+    }
   };
 
   const handleMountHook = async () => {
@@ -135,11 +139,14 @@ function HomePage() {
         setBackupPath(result.backup_path);
         setMountMsg({ type: 'success', text: '挂载成功！' });
         setHasHook(true);
+        notification.success({ message: '挂载成功', description: 'Hook 已成功挂载到 Claude Code 配置' });
       } else {
         setMountMsg({ type: 'error', text: result.message });
+        notification.error({ message: '挂载失败', description: result.message });
       }
     } catch (e) {
       setMountMsg({ type: 'error', text: String(e) });
+      notification.error({ message: '挂载失败', description: String(e) });
     }
     setIsMounting(false);
   };
@@ -153,11 +160,14 @@ function HomePage() {
         setBackupPath(result.backup_path);
         setMountMsg({ type: 'success', text: '解除成功' });
         setHasHook(false);
+        notification.success({ message: '解除成功', description: 'Hook 已从 Claude Code 配置中移除' });
       } else {
         setMountMsg({ type: 'error', text: result.message });
+        notification.error({ message: '解除失败', description: result.message });
       }
     } catch (e) {
       setMountMsg({ type: 'error', text: String(e) });
+      notification.error({ message: '解除失败', description: String(e) });
     }
     setIsMounting(false);
   };
@@ -167,7 +177,10 @@ function HomePage() {
       <h2 style={{ fontSize: 15, fontWeight: 600, color: '#1f1f1f', margin: '14px 0 12px', paddingBottom: 10, borderBottom: '1px solid #f0f0f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>主页概览</span>
         <button
-          onClick={() => invoke('quit_app')}
+          onClick={() => {
+            notification.info({ message: '正在退出', description: '程序即将关闭' });
+            invoke('quit_app');
+          }}
           style={{ padding: '4px 12px', background: 'linear-gradient(135deg, #ff4d4f, #d93636)', color: '#fff', border: 'none', borderRadius: 4, fontSize: 12, cursor: 'pointer', boxShadow: '0 1px 3px rgba(255,77,79,0.2)' }}
         >
           结束程序
@@ -260,7 +273,11 @@ function HomePage() {
                 setCurrentPetId(newPetId);
                 try {
                   await invoke('update_pet_stats', { currentPetId: newPetId });
-                } catch (e) { console.error(e); }
+                  const petName = pets.find(p => p.id === newPetId)?.name || newPetId;
+                  notification.success({ message: '切换成功', description: `已切换为 ${petName}` });
+                } catch (e) {
+                  notification.error({ message: '切换失败', description: String(e) });
+                }
               }} style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #d9d9d9', fontSize: 13, outline: 'none', cursor: 'pointer' }}>
                 {pets.map((pet) => <option key={pet.id} value={pet.id}>{pet.name}</option>)}
               </select>

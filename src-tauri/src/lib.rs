@@ -118,6 +118,130 @@ fn init_database() -> Result<rusqlite::Connection, String> {
         [chrono::Utc::now().timestamp()],
     ).map_err(|e| e.to_string())?;
 
+    // Hook settings table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS hook_settings (
+            id INTEGER PRIMARY KEY,
+            auto_approve_countdown INTEGER DEFAULT 10,
+            deny_countdown INTEGER DEFAULT 60
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO hook_settings (id, auto_approve_countdown, deny_countdown)
+         VALUES (1, 10, 60)",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    // Hook tools table (一级：工具名)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS hook_tools (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT NOT NULL UNIQUE
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    // Hook commands table (二级：命令前缀 + 自动审批状态)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS hook_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_id INTEGER NOT NULL,
+            command_pattern TEXT NOT NULL,
+            auto_approve INTEGER DEFAULT 0,
+            FOREIGN KEY (tool_id) REFERENCES hook_tools(id) ON DELETE CASCADE
+        )",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    // Insert sample data if no tools exist
+    let tool_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM hook_tools",
+        [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if tool_count == 0 {
+        // Sample tools and commands
+        let sample_data: Vec<(&str, &[(&str, bool)])> = vec![
+            ("Bash", &[
+                ("ls", true),
+                ("cat", true),
+                ("echo", true),
+                ("pwd", true),
+                ("cd ", true),
+                ("git status", true),
+                ("git diff", true),
+                ("git log", true),
+                ("git branch", true),
+                ("npm install", true),
+                ("pnpm install", true),
+                ("cargo build", true),
+                ("cargo check", true),
+                ("cargo run", true),
+                ("rm -rf", false),
+                ("git push --force", false),
+                ("git push -f", false),
+                ("sudo rm", false),
+                ("dd if=", false),
+                ("mkfs", false),
+            ]),
+            ("WebSearch", &[
+                ("WebSearch", true),
+            ]),
+            ("WebFetch", &[
+                ("WebFetch", true),
+            ]),
+            ("Read", &[
+                ("Read", true),
+            ]),
+            ("Glob", &[
+                ("Glob", true),
+            ]),
+            ("Grep", &[
+                ("Grep", true),
+            ]),
+            ("Write", &[
+                ("Write", false),
+            ]),
+            ("Edit", &[
+                ("Edit", false),
+            ]),
+            ("NotebookEdit", &[
+                ("NotebookEdit", false),
+            ]),
+            ("LSP", &[
+                ("LSP", true),
+            ]),
+            ("TodoWrite", &[
+                ("TodoWrite", true),
+            ]),
+        ];
+
+        for (tool_name, commands) in sample_data {
+            conn.execute(
+                "INSERT OR IGNORE INTO hook_tools (tool_name) VALUES (?)",
+                [tool_name],
+            ).map_err(|e| e.to_string())?;
+
+            let tool_id: i64 = conn.query_row(
+                "SELECT id FROM hook_tools WHERE tool_name = ?",
+                [tool_name],
+                |row| row.get(0),
+            ).unwrap_or(0);
+
+            for (cmd_pattern, auto_approve) in commands {
+                conn.execute(
+                    "INSERT OR IGNORE INTO hook_commands (tool_id, command_pattern, auto_approve) VALUES (?, ?, ?)",
+                    rusqlite::params![tool_id, cmd_pattern, if *auto_approve { 1 } else { 0 }],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+
+        tracing::info!("Sample hook data inserted");
+    }
+
     tracing::info!("Database initialized at {:?}", db_path);
     Ok(conn)
 }
@@ -157,6 +281,18 @@ pub fn run() {
             commands::mount_hook,
             commands::unmount_hook,
             commands::quit_app,
+            commands::get_hook_settings,
+            commands::update_hook_settings,
+            commands::get_hook_rules,
+            commands::add_hook_tool,
+            commands::remove_hook_tool,
+            commands::add_hook_command,
+            commands::remove_hook_command,
+            commands::update_tool_auto_approve,
+            commands::update_command_auto_approve,
+            commands::check_auto_approve,
+            commands::update_hook_tool_name,
+            commands::update_hook_command_pattern,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

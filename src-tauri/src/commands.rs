@@ -2,6 +2,337 @@ use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[derive(Debug, serde::Serialize)]
+pub struct HookSettings {
+    pub auto_approve_countdown: i32,
+    pub deny_countdown: i32,
+}
+
+#[tauri::command]
+pub fn get_hook_settings(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+) -> Result<HookSettings, String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    let mut stmt = conn.prepare(
+        "SELECT auto_approve_countdown, deny_countdown FROM hook_settings WHERE id = 1"
+    ).map_err(|e| e.to_string())?;
+
+    let settings = stmt.query_row([], |row| {
+        Ok(HookSettings {
+            auto_approve_countdown: row.get(0)?,
+            deny_countdown: row.get(1)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    Ok(settings)
+}
+
+#[tauri::command]
+pub fn update_hook_settings(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    auto_approve_countdown: Option<i32>,
+    deny_countdown: Option<i32>,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    if let Some(cd) = auto_approve_countdown {
+        conn.execute(
+            "UPDATE hook_settings SET auto_approve_countdown = ? WHERE id = 1",
+            rusqlite::params![cd],
+        ).map_err(|e| e.to_string())?;
+    }
+    if let Some(cd) = deny_countdown {
+        conn.execute(
+            "UPDATE hook_settings SET deny_countdown = ? WHERE id = 1",
+            rusqlite::params![cd],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct HookCommand {
+    pub id: i64,
+    pub command_pattern: String,
+    pub auto_approve: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct HookTool {
+    pub id: i64,
+    pub tool_name: String,
+    pub auto_approve: bool,
+    pub commands: Vec<HookCommand>,
+}
+
+#[tauri::command]
+pub fn get_hook_rules(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+) -> Result<Vec<HookTool>, String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    let mut tools: Vec<HookTool> = Vec::new();
+
+    let mut stmt = conn.prepare(
+        "SELECT id, tool_name FROM hook_tools ORDER BY id"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    }).map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let (tool_id, tool_name) = row.map_err(|e| e.to_string())?;
+
+        let mut cmd_stmt = conn.prepare(
+            "SELECT id, command_pattern, auto_approve FROM hook_commands WHERE tool_id = ?"
+        ).map_err(|e| e.to_string())?;
+
+        let commands: Vec<HookCommand> = cmd_stmt.query_map([tool_id], |row| {
+            Ok(HookCommand {
+                id: row.get(0)?,
+                command_pattern: row.get(1)?,
+                auto_approve: row.get::<_, i32>(2)? == 1,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        // tool's auto_approve is true only if ALL commands are auto_approve
+        let auto_approve = if commands.is_empty() {
+            false
+        } else {
+            commands.iter().all(|c| c.auto_approve)
+        };
+
+        tools.push(HookTool {
+            id: tool_id,
+            tool_name,
+            auto_approve,
+            commands,
+        });
+    }
+
+    Ok(tools)
+}
+
+#[tauri::command]
+pub fn add_hook_tool(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_name: String,
+) -> Result<i64, String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    // Check if tool already exists
+    let exists: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM hook_tools WHERE tool_name = ?",
+        rusqlite::params![tool_name],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    if exists > 0 {
+        return Err("工具已存在".to_string());
+    }
+
+    conn.execute(
+        "INSERT INTO hook_tools (tool_name) VALUES (?)",
+        rusqlite::params![tool_name],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+pub fn remove_hook_tool(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_id: i64,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    // Delete commands first (cascade should handle this but be explicit)
+    conn.execute("DELETE FROM hook_commands WHERE tool_id = ?", rusqlite::params![tool_id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM hook_tools WHERE id = ?", rusqlite::params![tool_id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_hook_command(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_id: i64,
+    command_pattern: String,
+) -> Result<i64, String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    // Truncate to 50 chars
+    let pattern = command_pattern.chars().take(50).collect::<String>();
+
+    // Check if command pattern already exists for this tool
+    let exists: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM hook_commands WHERE tool_id = ? AND command_pattern = ?",
+        rusqlite::params![tool_id, pattern],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    if exists > 0 {
+        return Err("命令前缀已存在".to_string());
+    }
+
+    conn.execute(
+        "INSERT INTO hook_commands (tool_id, command_pattern, auto_approve) VALUES (?, ?, 0)",
+        rusqlite::params![tool_id, pattern],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+pub fn remove_hook_command(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    command_id: i64,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    conn.execute("DELETE FROM hook_commands WHERE id = ?", rusqlite::params![command_id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_tool_auto_approve(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_id: i64,
+    auto_approve: bool,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    let value = if auto_approve { 1 } else { 0 };
+    conn.execute(
+        "UPDATE hook_commands SET auto_approve = ? WHERE tool_id = ?",
+        rusqlite::params![value, tool_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_command_auto_approve(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    command_id: i64,
+    auto_approve: bool,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    let value = if auto_approve { 1 } else { 0 };
+    conn.execute(
+        "UPDATE hook_commands SET auto_approve = ? WHERE id = ?",
+        rusqlite::params![value, command_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_hook_tool_name(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_id: i64,
+    tool_name: String,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    conn.execute(
+        "UPDATE hook_tools SET tool_name = ? WHERE id = ?",
+        rusqlite::params![tool_name, tool_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_hook_command_pattern(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    command_id: i64,
+    command_pattern: String,
+) -> Result<(), String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    let pattern = command_pattern.chars().take(50).collect::<String>();
+    conn.execute(
+        "UPDATE hook_commands SET command_pattern = ? WHERE id = ?",
+        rusqlite::params![pattern, command_id],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AutoApproveCheckResult {
+    pub should_auto_approve: bool,
+    pub matched: bool,
+}
+
+#[tauri::command]
+pub fn check_auto_approve(
+    db: tauri::State<'_, Arc<Mutex<Option<rusqlite::Connection>>>>,
+    tool_name: String,
+    command: String,
+) -> Result<AutoApproveCheckResult, String> {
+    let db_guard = db.blocking_lock();
+    let conn = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    // Find the tool
+    let mut stmt = conn.prepare(
+        "SELECT id FROM hook_tools WHERE tool_name = ?"
+    ).map_err(|e| e.to_string())?;
+
+    let tool_id: Option<i64> = stmt.query_row([&tool_name], |row| row.get(0)).ok();
+
+    if let Some(tid) = tool_id {
+        // Check if any command matches
+        let mut cmd_stmt = conn.prepare(
+            "SELECT command_pattern, auto_approve FROM hook_commands WHERE tool_id = ?"
+        ).map_err(|e| e.to_string())?;
+
+        let command_prefix = command.chars().take(50).collect::<String>();
+
+        let rows = cmd_stmt.query_map([tid], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)? == 1))
+        }).map_err(|e| e.to_string())?;
+
+        for row in rows {
+            if let Ok((pattern, auto_approve)) = row {
+                if command_prefix.starts_with(&pattern) {
+                    return Ok(AutoApproveCheckResult {
+                        should_auto_approve: auto_approve,
+                        matched: true,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(AutoApproveCheckResult {
+        should_auto_approve: false,
+        matched: false,
+    })
+}
+
 #[tauri::command]
 pub fn set_click_through(app: AppHandle, enabled: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
