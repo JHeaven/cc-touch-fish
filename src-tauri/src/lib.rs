@@ -277,6 +277,21 @@ pub fn run() {
                 .set_description("程序已经打开过了，不要再打开一遍。")
                 .show();
         }))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    use tauri_plugin_global_shortcut::{Code, ShortcutState};
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if shortcut.key == Code::KeyY {
+                        let _ = app.emit_to("bubble", "bubble-shortcut-y", ());
+                    } else if shortcut.key == Code::KeyN {
+                        let _ = app.emit_to("bubble", "bubble-shortcut-n", ());
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_shell::init())
         .manage(prettooluse_state.clone())
         .manage(db_state)

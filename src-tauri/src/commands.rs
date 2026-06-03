@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut};
 
 #[derive(Debug, serde::Serialize)]
 pub struct HookSettings {
@@ -372,6 +373,19 @@ pub async fn submit_approval(
 #[tauri::command]
 pub fn show_bubble_window(app: AppHandle) -> Result<(), String> {
     tracing::info!("show_bubble_window called");
+
+    let gs = app.global_shortcut();
+    let y_key = Shortcut::new(None, Code::KeyY);
+    let n_key = Shortcut::new(None, Code::KeyN);
+    let _ = gs.unregister(y_key);
+    let _ = gs.unregister(n_key);
+    if let Err(e) = gs.register(y_key) {
+        tracing::warn!("Failed to register Y shortcut: {}", e);
+    }
+    if let Err(e) = gs.register(n_key) {
+        tracing::warn!("Failed to register N shortcut: {}", e);
+    }
+
     if let Some(window) = app.get_webview_window("bubble") {
         tracing::info!("Found bubble window, positioning and showing");
         position_bubble_window(&app)?;
@@ -386,6 +400,10 @@ pub fn show_bubble_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn hide_bubble_window(app: AppHandle) -> Result<(), String> {
+    let gs = app.global_shortcut();
+    let _ = gs.unregister(Shortcut::new(None, Code::KeyY));
+    let _ = gs.unregister(Shortcut::new(None, Code::KeyN));
+
     if let Some(window) = app.get_webview_window("bubble") {
         let _ = window.hide();
     }

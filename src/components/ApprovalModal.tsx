@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 interface ApprovalModalProps {
   pendingApproval: {
@@ -115,6 +116,32 @@ function ApprovalModal({ pendingApproval, onApprove, onDeny }: ApprovalModalProp
       // Clear any pending interval when component unmounts
     };
   }, []);
+
+  // Keyboard shortcuts: Y = approve, N = deny
+  // Two layers: (1) JS keydown for fast path in non-IME scenarios,
+  // (2) listen for events emitted by tauri-plugin-global-shortcut which
+  // works at the OS level and bypasses Chinese/Japanese IMEs.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.code === 'KeyY') {
+        onApprove();
+      } else if (e.code === 'KeyN') {
+        onDeny();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    const unlistenYPromise = listen('bubble-shortcut-y', () => onApprove());
+    const unlistenNPromise = listen('bubble-shortcut-n', () => onDeny());
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      unlistenYPromise.then(u => u());
+      unlistenNPromise.then(u => u());
+    };
+  }, [onApprove, onDeny]);
 
   const handleApprove = () => {
     onApprove();
