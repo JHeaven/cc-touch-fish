@@ -222,7 +222,7 @@ function SettingsWindow() {
             }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>🐟</div>
               <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: '0 0 6px' }}>CC Touch Fish</h1>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', margin: 0 }}>版本 0.1.1</p>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.8)', margin: 0 }}>版本 0.1.2</p>
             </div>
 
             {/* 信息卡片 */}
@@ -244,7 +244,7 @@ function SettingsWindow() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f5f5f5' }}>
                   <span style={{ fontSize: 13, color: '#8c8c8c' }}>版本号</span>
-                  <span style={{ fontSize: 13, color: '#262626', fontWeight: 500 }}>0.1.1</span>
+                  <span style={{ fontSize: 13, color: '#262626', fontWeight: 500 }}>0.1.2</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
                   <span style={{ fontSize: 13, color: '#8c8c8c' }}>技术栈</span>

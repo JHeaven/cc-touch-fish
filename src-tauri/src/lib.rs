@@ -10,6 +10,8 @@ use tauri::{
     Emitter, Manager, Runtime,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tauri_plugin_single_instance::init as init_single_instance;
+use rfd::MessageDialog;
 
 #[derive(Default)]
 pub struct PreToolUseState {
@@ -264,6 +266,17 @@ pub fn run() {
     let db_state = Arc::new(Mutex::new(db_conn));
 
     tauri::Builder::default()
+        .plugin(init_single_instance(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            MessageDialog::new()
+                .set_title("CC Touch Fish")
+                .set_description("程序已经打开过了，不要再打开一遍。")
+                .show();
+        }))
         .plugin(tauri_plugin_shell::init())
         .manage(prettooluse_state.clone())
         .manage(db_state)
